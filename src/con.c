@@ -514,8 +514,7 @@ Con *con_parent_with_orientation(Con *con, orientation_t orientation) {
 struct bfs_entry {
     Con *con;
 
-    TAILQ_ENTRY(bfs_entry)
-    entries;
+    TAILQ_ENTRY(bfs_entry) entries;
 };
 
 /*
@@ -527,9 +526,7 @@ Con *con_get_fullscreen_con(Con *con, fullscreen_mode_t fullscreen_mode) {
 
     /* TODO: is breadth-first-search really appropriate? (check as soon as
      * fullscreen levels and fullscreen for containers is implemented) */
-    TAILQ_HEAD(bfs_head, bfs_entry)
-    bfs_head = TAILQ_HEAD_INITIALIZER(bfs_head);
-
+    TAILQ_HEAD(bfs_head, bfs_entry) bfs_head = TAILQ_HEAD_INITIALIZER(bfs_head);
     struct bfs_entry *entry = smalloc(sizeof(struct bfs_entry));
     entry->con = con;
     TAILQ_INSERT_TAIL(&bfs_head, entry, entries);
@@ -1370,7 +1367,7 @@ bool con_move_to_mark(Con *con, const char *mark) {
     }
 
     /* For target containers in the scratchpad, we just send the window to the scratchpad. */
-    if (con_get_workspace(target) == workspace_get("__i3_scratch", NULL)) {
+    if (con_get_workspace(target) == workspace_get("__i3_scratch")) {
         DLOG("target container is in the scratchpad, moving container to scratchpad.\n");
         scratchpad_move(con);
         return true;
@@ -2307,20 +2304,25 @@ i3String *con_parse_title_format(Con *con) {
     char *title;
     char *class;
     char *instance;
+    char *machine;
     if (win == NULL) {
         title = pango_escape_markup(con_get_tree_representation(con));
         class = sstrdup("i3-frame");
         instance = sstrdup("i3-frame");
+        machine = sstrdup("");
     } else {
         title = pango_escape_markup(sstrdup((win->name == NULL) ? "" : i3string_as_utf8(win->name)));
         class = pango_escape_markup(sstrdup((win->class_class == NULL) ? "" : win->class_class));
         instance = pango_escape_markup(sstrdup((win->class_instance == NULL) ? "" : win->class_instance));
+        machine = pango_escape_markup(sstrdup((win->machine == NULL) ? "" : win->machine));
     }
 
     placeholder_t placeholders[] = {
         {.name = "%title", .value = title},
         {.name = "%class", .value = class},
-        {.name = "%instance", .value = instance}};
+        {.name = "%instance", .value = instance},
+        {.name = "%machine", .value = machine},
+    };
     const size_t num = sizeof(placeholders) / sizeof(placeholder_t);
 
     char *formatted_str = format_placeholders(con->title_format, &placeholders[0], num);

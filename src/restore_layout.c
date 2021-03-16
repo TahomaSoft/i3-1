@@ -29,8 +29,7 @@ typedef struct placeholder_state {
     /** The drawable surface */
     surface_t surface;
 
-    TAILQ_ENTRY(placeholder_state)
-    state;
+    TAILQ_ENTRY(placeholder_state) state;
 } placeholder_state;
 
 static TAILQ_HEAD(state_head, placeholder_state) state_head =
@@ -154,6 +153,7 @@ static void update_placeholder_contents(placeholder_state *state) {
         APPEND_REGEX(instance);
         APPEND_REGEX(window_role);
         APPEND_REGEX(title);
+        APPEND_REGEX(machine);
 
         if (serialized == NULL) {
             DLOG("This swallows specification is not serializable?!\n");

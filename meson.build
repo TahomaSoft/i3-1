@@ -6,7 +6,7 @@
 project(
   'i3',
   'c',
-  version: '4.18.1',
+  version: '4.19.2',
   default_options: [
     'c_std=c11',
     'warning_level=1',  # enable all warnings (-Wall)
@@ -289,7 +289,7 @@ else
 endif
 
 if meson.version().version_compare('>=0.53')
-  summary('build manpages (-Dmans)', get_option('docs'))
+  summary('build manpages (-Dmans)', get_option('mans'))
 endif
 
 # Required for e.g. struct ucred to be defined as per unix(7).
@@ -325,6 +325,7 @@ ev_dep = cc.find_library('ev')
 inc = include_directories('include')
 
 libi3srcs = [
+  'libi3/create_socket.c',
   'libi3/dpi.c',
   'libi3/draw_util.c',
   'libi3/fake_configure_notify.c',
@@ -341,11 +342,13 @@ libi3srcs = [
   'libi3/ipc_recv_message.c',
   'libi3/ipc_send_message.c',
   'libi3/is_debug_build.c',
+  'libi3/path_exists.c',
   'libi3/resolve_tilde.c',
   'libi3/root_atom_contents.c',
   'libi3/safewrappers.c',
   'libi3/string.c',
   'libi3/ucs2_conversion.c',
+  'libi3/nonblock.c',
 ]
 
 if not cdata.get('HAVE_STRNDUP')
@@ -514,6 +517,7 @@ executable(
     'i3-config-wizard/i3-config-wizard-atoms.xmacro.h',
     'i3-config-wizard/main.c',
     'i3-config-wizard/xcb.h',
+    config_parser,
   ],
   install: true,
   include_directories: include_directories('include', 'i3-config-wizard'),
@@ -598,18 +602,22 @@ install_headers(
 # because configure_file strips the backslash in e.g. \@display,
 # resulting in @display, breaking our Perl code:
 # https://github.com/mesonbuild/meson/issues/7165
-sed = find_program('sed')
+bash = find_program('bash')
 replace_dirs = [
-  sed,
-  '-e',
-  's,@abs_top_builddir@,'+meson.current_build_dir()+',g;s,@abs_top_srcdir@,'+meson.current_source_dir()+',g',
-  '@INPUT@',
+  bash, '-c',  # Use bash to capture output and mark as executable
+  'sed -e \'s,@abs_top_builddir@,'
+  + meson.current_build_dir()
+  + ',g;s,@abs_top_srcdir@,'
+  + meson.current_source_dir()+',g\''
+  # Only mark files ending in .pl as executables
+  + ' "$0" > "$1" && { [[ "${1##*.}" == pl ]] && chmod +x "$1" || true; }',
+  '@INPUT0@',   # $0
+  '@OUTPUT0@',  # $1
 ]
 complete_run = custom_target(
   'complete-run',
   input: ['testcases/complete-run.pl.in'],
   output: ['complete-run.pl'],
-  capture: true,
   command: replace_dirs,
   # build this target when running e.g. ninja or ninja test.
   # This is required for older meson versions (< 0.46.0).
@@ -619,7 +627,6 @@ i3test_pm = custom_target(
   'i3test-pm',
   input: ['testcases/lib/i3test.pm.in'],
   output: ['i3test.pm'],
-  capture: true,
   command: replace_dirs,
   # build this target when running e.g. ninja or ninja test.
   # This is required for older meson versions (< 0.46.0).
@@ -639,7 +646,7 @@ if get_option('docs')
       '@OUTPUT@',
     ],
     install: true,
-    install_dir: join_paths(get_option('datadir'), 'doc', 'i3'),
+    install_dir: docdir,
   )
 
   custom_target(
@@ -652,7 +659,7 @@ if get_option('docs')
       '@OUTPUT@',
     ],
     install: true,
-    install_dir: join_paths(get_option('datadir'), 'doc', 'i3'),
+    install_dir: docdir,
   )
 endif
 
@@ -666,7 +673,10 @@ executable(
 
 executable(
   'test.commands_parser',
-  'src/commands_parser.c',
+  [
+    'src/commands_parser.c',
+    command_parser,
+  ],
   include_directories: inc,
   c_args: '-DTEST_PARSER',
   dependencies: common_deps,
@@ -675,7 +685,10 @@ executable(
 
 executable(
   'test.config_parser',
-  'src/config_parser.c',
+  [
+    'src/config_parser.c',
+    config_parser,
+  ],
   include_directories: inc,
   c_args: '-DTEST_PARSER',
   dependencies: common_deps,

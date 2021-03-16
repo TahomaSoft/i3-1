@@ -44,9 +44,7 @@ struct pending_marks {
  * array. */
 struct focus_mapping {
     int old_id;
-
-    TAILQ_ENTRY(focus_mapping)
-    focus_mappings;
+    TAILQ_ENTRY(focus_mapping) focus_mappings;
 };
 
 static TAILQ_HEAD(focus_mappings_head, focus_mapping) focus_mappings =
@@ -286,6 +284,9 @@ static int json_string(void *ctx, const unsigned char *val, size_t len) {
             swallow_is_empty = false;
         } else if (strcasecmp(last_key, "title") == 0) {
             current_swallow->title = regex_new(sval);
+            swallow_is_empty = false;
+        } else if (strcasecmp(last_key, "machine") == 0) {
+            current_swallow->machine = regex_new(sval);
             swallow_is_empty = false;
         } else {
             ELOG("swallow key %s unknown\n", last_key);

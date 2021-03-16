@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <xcb/xinerama.h>
+#include <xcb/bigreq.h>
 
 #ifdef I3_ASAN_ENABLED
 #include <sanitizer/lsan_interface.h>
@@ -181,6 +183,9 @@ static void i3_exit(void) {
     }
     ipc_shutdown(SHUTDOWN_REASON_EXIT, -1);
     unlink(config.ipc_socket_path);
+    if (current_log_stream_socket_path != NULL) {
+        unlink(current_log_stream_socket_path);
+    }
     xcb_disconnect(conn);
 
     /* If a nagbar is active, kill it */
@@ -570,6 +575,17 @@ int main(int argc, char *argv[]) {
     root_screen = xcb_aux_get_screen(conn, conn_screen);
     root = root_screen->root;
 
+    /* Prefetch X11 extensions that we are interested in. */
+    xcb_prefetch_extension_data(conn, &xcb_xkb_id);
+    xcb_prefetch_extension_data(conn, &xcb_shape_id);
+    /* BIG-REQUESTS is used by libxcb internally. */
+    xcb_prefetch_extension_data(conn, &xcb_big_requests_id);
+    if (force_xinerama) {
+        xcb_prefetch_extension_data(conn, &xcb_xinerama_id);
+    } else {
+        xcb_prefetch_extension_data(conn, &xcb_randr_id);
+    }
+
     /* Place requests for the atoms we need as soon as possible */
 #define xmacro(atom) \
     xcb_intern_atom_cookie_t atom##_cookie = xcb_intern_atom(conn, 0, strlen(#atom), #atom);
@@ -598,6 +614,8 @@ int main(int argc, char *argv[]) {
     } else {
         visual_type = get_visualtype(root_screen);
     }
+
+    xcb_prefetch_maximum_request_length(conn);
 
     init_dpi();
 
@@ -663,9 +681,6 @@ int main(int argc, char *argv[]) {
     xcursor_set_root_cursor(XCURSOR_CURSOR_POINTER);
 
     const xcb_query_extension_reply_t *extreply;
-    xcb_prefetch_extension_data(conn, &xcb_xkb_id);
-    xcb_prefetch_extension_data(conn, &xcb_shape_id);
-
     extreply = xcb_get_extension_data(conn, &xcb_xkb_id);
     xkb_supported = extreply->present;
     if (!extreply->present) {
@@ -845,13 +860,25 @@ int main(int argc, char *argv[]) {
     tree_render();
 
     /* Create the UNIX domain socket for IPC */
-    int ipc_socket = ipc_create_socket(config.ipc_socket_path);
+    int ipc_socket = create_socket(config.ipc_socket_path, &current_socketpath);
     if (ipc_socket == -1) {
         ELOG("Could not create the IPC socket, IPC disabled\n");
     } else {
         struct ev_io *ipc_io = scalloc(1, sizeof(struct ev_io));
         ev_io_init(ipc_io, ipc_new_client, ipc_socket, EV_READ);
         ev_io_start(main_loop, ipc_io);
+    }
+
+    /* Chose a file name in /tmp/ based on the PID */
+    char *log_stream_socket_path = get_process_filename("log-stream-socket");
+    int log_socket = create_socket(log_stream_socket_path, &current_log_stream_socket_path);
+    free(log_stream_socket_path);
+    if (log_socket == -1) {
+        ELOG("Could not create the log socket, i3-dump-log -f will not work\n");
+    } else {
+        struct ev_io *log_io = scalloc(1, sizeof(struct ev_io));
+        ev_io_init(log_io, log_new_client, log_socket, EV_READ);
+        ev_io_start(main_loop, log_io);
     }
 
     /* Also handle the UNIX domain sockets passed via socket activation. The
